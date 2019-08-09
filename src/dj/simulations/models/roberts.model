@@ -1,0 +1,14 @@
+a = 0.04;
+b = 1e4;
+c = 3e7;
+alpha = a*y1;
+bravo = b*y2*y3;
+charlie = c*pow(y2,2);
+
+y1_init = 1.0;
+y2_init = 0.0;
+y3_init = 0.0;
+
+diff_y1 = -alpha+bravo;
+diff_y2 = alpha-bravo-charlie;
+diff_y3 = charlie;
