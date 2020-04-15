@@ -1,2 +1,2 @@
-# dj.simulations
-Clojure driven simulation toolkit
+# dj.lib
+Brent's personal code
