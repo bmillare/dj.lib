@@ -13,7 +13,8 @@
   [coordinates]
   (pom/add-dependencies
    :coordinates coordinates
-   :local-repo (dj.io/file (System/getProperty "user.dir")
+   :local-repo (dj.io/file (or (get (System/getenv) "DJ_SOLO_DIRECTORY")
+                               (System/getProperty "user.dir"))
                            "m2")
    :repositories (merge a/maven-central
                         {"clojars" "https://clojars.org/repo"})))
