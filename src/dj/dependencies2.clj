@@ -7,7 +7,7 @@
     (.setContextClassLoader (clojure.lang.RT/baseLoader)))
 
 (defn add-dependencies
-  "(add-dependencies '[[incanter \"1.7.0\"]])
+  "(add-dependencies '[[incanter \"1.7.0\" :exclusions [org.clojure/clojure]])
 
   stores jars in local m2 directory"
   [coordinates]
