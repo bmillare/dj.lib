@@ -116,140 +116,6 @@
  (= [:x nil]
     (place-at-and-push-back [] 1 :x)))
 
-(defn runit []
-  (let [master [:a :b :c :d]
-        lzero (long 0)]
-    (loop [scores {:a 0
-                   :b 0
-                   :c 0
-                   :d 0}
-           stack [nil]
-           idx lzero]
-      (print "scores ") (prn scores)
-      (print "stack " ) (prn stack)
-      (print "idx ") (prn idx)
-      (println "q quit")
-      (println "p correct")
-      (println "n incorrect")
-      (let [current (peek stack)]
-        (if current
-          (let [score (long (scores current))
-                _ (println current)
-                _ (flush)
-                input (read-line)]
-            (case input
-              "p" (let [new-score (inc score)]
-                    (recur (assoc scores
-                                  current
-                                  new-score)
-                           (place-at-or-next-free (pop stack) new-score current)
-                           idx))
-              "n" (let [new-score (max (dec score)
-                                       lzero)]
-                    (recur (assoc scores
-                                  current
-                                  new-score)
-                           (place-at-and-push-back (pop stack) new-score current)
-                           idx))
-              "q" nil
-              (recur scores
-                     stack
-                     idx)))
-          (let [idx (mod idx (count master))
-                current (master idx)
-                new-idx (inc idx)
-                score (long (scores current))
-                _ (println current)
-                _ (flush)
-                input (read-line)]
-            (println current)
-            (case input
-              "p" (let [new-score (inc score)]
-                    (recur (assoc scores
-                                  current
-                                  new-score)
-                           (place-at-or-next-free (pop stack) new-score current)
-                           new-idx))
-              "n" (let [new-score (max (dec score)
-                                       lzero)]
-                    (recur (assoc scores
-                                  current
-                                  new-score)
-                           (place-at-and-push-back (pop stack) new-score current)
-                           new-idx))
-              "q" nil
-              (recur scores
-                     stack
-                     idx))))))))
-
-(let [prompt
-      (fn prompt [current]
-        (println current)
-        (flush)
-        (read-line)
-        (println "q quit")
-        (println "p correct")
-        (println "n incorrect")
-        (flush))]
-  (defn runit2 [master]
-    (let [lzero (long 0)]
-      (loop [scores {}
-             stack [nil]
-             idx lzero]
-        (print "scores ") (prn scores)
-        (print "stack " ) (prn stack)
-        (print "idx ") (prn idx)
-        (let [current (peek stack)]
-          (if current
-            (let [score (long (or (scores current)
-                                  lzero))
-                  _ (prompt current)
-                  input (read-line)]
-              (case input
-                "p" (let [new-score (inc score)]
-                      (recur (assoc scores
-                                    current
-                                    new-score)
-                             (place-at-or-next-free (pop stack) new-score current)
-                             idx))
-                "n" (let [new-score (max (dec score)
-                                         lzero)]
-                      (recur (assoc scores
-                                    current
-                                    new-score)
-                             (place-at-and-push-back (pop stack) new-score current)
-                             idx))
-                "q" nil
-                (recur scores
-                       stack
-                       idx)))
-            (let [idx (mod idx (count master))
-                  current (master idx)
-                  new-idx (inc idx)
-                  score (long (or (scores current)
-                                  lzero))
-                  _ (prompt current)
-                  input (read-line)]
-              (println current)
-              (case input
-                "p" (let [new-score (inc score)]
-                      (recur (assoc scores
-                                    current
-                                    new-score)
-                             (place-at-or-next-free (pop stack) new-score current)
-                             new-idx))
-                "n" (let [new-score (max (dec score)
-                                         lzero)]
-                      (recur (assoc scores
-                                    current
-                                    new-score)
-                             (place-at-and-push-back (pop stack) new-score current)
-                             new-idx))
-                "q" nil
-                (recur scores
-                       stack
-                       idx)))))))))
-
 (let [correct-letter ""
       incorrect-letter "'"
       quit-letter "q"
@@ -333,8 +199,8 @@
 ;;   - [X] airport codes / regions
 ;; - [X] improve interface, be able to see characters larger via swing
 ;; - [X] make dumb durable log compacter
-;; - [ ] checkout progress
-;; - [ ] cleanup checkout clean
+;; - [X] checkout progress
+;; - [X] cleanup checkout clean
 
 (defn table-reader [path f]
   (with-open [table-reader (cji/reader path)]
