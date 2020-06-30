@@ -201,8 +201,11 @@
 ;; - [X] make dumb durable log compacter
 ;; - [X] checkout progress
 ;; - [X] cleanup checkout clean
+;; - [X] refactor, incorporate durability into gui
 
-(defn table-reader [path f]
+(defn table-reader
+  "read tab delimited table"
+  [path f]
   (with-open [table-reader (cji/reader path)]
     (mapv (fn [s]
             (f (clojure.string/split s #"\t")))

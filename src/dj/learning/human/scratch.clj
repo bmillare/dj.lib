@@ -1,18 +1,23 @@
 (ns dj.learning.human.scratch
   (:require [dj.learning.human.spaced-repetition :as srs]
             [dj.learning.human.srs-gui :as srsgui]
-            [dj.dispatch.treefn :as tf]
-            [dj.durable :as dd]))
+            [dj.dispatch.treefn :as tf]))
 
 ;; HSK1 Chinese -> English
 (do
   (load "srs_gui")
-  (read-line)
-  (-> "/home/bmillare/Documents/learn-chinese/HSK Official With Definitions 2012 L1 freqorder.txt"
-      (srs/table-reader (fn [[simplified traditional tonenumber tonemark english]]
-                          [(str simplified " " tonemark)
-                           english]))
-      (srsgui/rungui3)))
+  (let [input (merge srsgui/default-tfgui-inputs
+                     {:master-list
+                      (-> "/home/bmillare/Documents/learn-chinese/HSK Official With Definitions 2012 L1 freqorder.txt"
+                          (srs/table-reader (fn [[simplified traditional tonenumber tonemark english]]
+                                              [(str simplified " " tonemark)
+                                               english])))
+                      :score-path "/home/bmillare/Documents/learn-chinese/HSK Official With Definitions 2012 L1 freqorder scores.edn"})
+        the-tf (tf/treefm (merge srsgui/tfgui-fms
+                                 srsgui/tfgui-saver-fms)
+                          :run!)]
+    (read-line)
+    (the-tf input)))
 
 (clojure.repl/doc send-off)
 
@@ -20,22 +25,18 @@
 (do
   (load "srs_gui")
   (load "/dj/durable")
-  (let [my-agent (dd/kv-agent)
-        scores-path "/home/bmillare/Documents/flashcards/aws_regions_scores.edn"
-        my-writer (dd/kv-writer scores-path)
-        input (merge srsgui/default-tfgui-inputs
-                     {:master
+  (let [input (merge srsgui/default-tfgui-inputs
+                     {:master-list
                       (-> "/home/bmillare/Documents/flashcards/aws_regions.txt"
                           (srs/table-reader (fn [[airport region descrp]]
                                               [airport
                                                region])))
-                      :initial-scores (dd/read-kv-log-file scores-path)
-                      :score-saver! (dd/assoc+save!-fn my-writer)})
-        the-tf (tf/treefm srsgui/tfgui-fms
+                      :score-path "/home/bmillare/Documents/flashcards/aws_regions_scores.edn"})
+        the-tf (tf/treefm (merge srsgui/tfgui-fms
+                                 srsgui/tfgui-saver-fms)
                           :run!)]
     (read-line)
-    (the-tf input)
-    (.close my-writer)))
+    (the-tf input)))
 
 (load "/dj/durable")
 (dd/map->storage-dumb

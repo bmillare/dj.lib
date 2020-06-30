@@ -3,7 +3,8 @@
 (ns dj.learning.human.srs-gui
   (:require [seesaw.core :as sc]
             [dj.learning.human.spaced-repetition :as srs]
-            [dj.dispatch.treefn :as tf]))
+            [dj.dispatch.treefn :as tf]
+            [dj.durable :as dd]))
 
 (sc/native!)
 
@@ -18,16 +19,37 @@
    :font "ARIAL-40"
    :scaler
    (fn ^long scaler [^long x]
-     (long (Math/floor (Math/pow (double 2) (double (dec x))))))
-   :initial-scores {}
-   })
+     (long (Math/floor (Math/pow (double 2) (double (dec x))))))})
+
+(def tfgui-saver-fms
+  {:score-writer
+   (tf/fm
+    [:score-path]
+    (dd/kv-writer score-path))
+   :save-agent
+   (tf/fm
+    []
+    (dd/kv-agent))
+   :score-saver!
+   (tf/fm
+    [:score-writer]
+    (dd/assoc+save!-fn score-writer))
+   :score-closer!
+   (tf/fm
+    [:run!
+     ^java.io.Writer score-writer]
+    (.close score-writer))
+   :initial-scores
+   (tf/fm
+    [:score-path]
+    (dd/read-kv-log-file score-path))})
 
 (def tfgui-fms
   {:run!
    (tf/fm
     [:incorrect-symbol
      :quit-symbol
-     :master
+     :master-list
      :window-title
      :window-width
      :window-height
@@ -100,8 +122,8 @@
                 (recur scores
                        stack
                        idx)))
-            (let [idx (mod idx (count master))
-                  current (master idx)
+            (let [idx (mod idx (count master-list))
+                  current (master-list idx)
                   new-idx (inc idx)
                   score (long (or (scores current)
                                   lzero))
