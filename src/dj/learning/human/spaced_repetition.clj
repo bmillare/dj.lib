@@ -1,4 +1,5 @@
-(ns dj.learning.human.spaced-repetitions)
+(ns dj.learning.human.spaced-repetition
+  (:require [clojure.java.io :as cji]))
 
 ;; - want to maximize exposure to all words
 ;; - want maximize correct answers to questions
@@ -325,7 +326,18 @@
                        idx)))))))))
 
 ;; Todo
-;; - [ ] be able to pull from word lists
-;; - [ ] be able to store scores and restore scores state
-;; - [ ] generate word lists for different topics
-;;   - [ ] airport codes / regions
+;; - [X] be able to pull from word lists
+;; - [X] convert to tf
+;; - [X] be able to store scores and restore scores state
+;; - [X] generate word lists for different topics
+;;   - [X] airport codes / regions
+;; - [X] improve interface, be able to see characters larger via swing
+;; - [X] make dumb durable log compacter
+;; - [ ] checkout progress
+;; - [ ] cleanup checkout clean
+
+(defn table-reader [path f]
+  (with-open [table-reader (cji/reader path)]
+    (mapv (fn [s]
+            (f (clojure.string/split s #"\t")))
+          (line-seq table-reader))))

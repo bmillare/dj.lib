@@ -71,6 +71,16 @@ where 11 is the hash of the value
     (.write writer (str (pr-str k) " " (pr-str v) "\n"))
     (.flush writer)))
 
+(defn write-entry-no-flush!
+  "takes a :append writer to a file
+
+  writes hash of v, k, and v as edn to file
+  "
+  [writer k v]
+  (let [v-hash (hash v)]
+    (.write writer (str v-hash "\n"))
+    (.write writer (str (pr-str k) " " (pr-str v) "\n"))))
+
 (defn conj-entry-fn
   "takes a :append writer to a file"
   [^java.io.Writer writer]
@@ -82,7 +92,12 @@ where 11 is the hash of the value
   [^java.io.Writer writer]
   (fn update-entry [m f k args]
     (let [v (apply f (get m k) args)]
-      (write-entry! writer k v))
+      (write-entry! writer k v)
+      (assoc m k v))))
+
+(defn assoc+save!-fn [^java.io.Writer writer]
+  (fn assoc+save! [m k v]
+    (write-entry! writer k v)
     (assoc m k v)))
 
 (defn kv-writer [path]
@@ -107,3 +122,9 @@ where 11 is the hash of the value
 
   )
 
+(defn map->storage-dumb
+  "converts map to log style, no ordering defined"
+  [m path]
+  (with-open [w (cji/writer path)]
+    (doseq [[k v] m]
+      (write-entry-no-flush! w k v))))
