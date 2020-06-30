@@ -15,7 +15,7 @@
                       :score-path "/home/bmillare/Documents/learn-chinese/HSK Official With Definitions 2012 L1 freqorder scores.edn"})
         the-tf (tf/treefm (merge srsgui/tfgui-fms
                                  srsgui/tfgui-saver-fms)
-                          :run!)]
+                          :score-closer!)]
     (read-line)
     (the-tf input)))
 
@@ -34,7 +34,7 @@
                       :score-path "/home/bmillare/Documents/flashcards/aws_regions_scores.edn"})
         the-tf (tf/treefm (merge srsgui/tfgui-fms
                                  srsgui/tfgui-saver-fms)
-                          :run!)]
+                          :score-closer!)]
     (read-line)
     (the-tf input)))
 
