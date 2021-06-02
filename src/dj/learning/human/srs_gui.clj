@@ -17,6 +17,7 @@
    :window-start-x 100
    :window-start-y 100
    :font "ARIAL-40"
+   :start-idx 0
    :scaler
    (fn ^long scaler [^long x]
      (long (Math/floor (Math/pow (double 2) (double (dec x))))))})
@@ -58,7 +59,8 @@
      :font
      :scaler
      :initial-scores
-     :score-saver!]
+     :score-saver!
+     :start-idx]
     (let [frame (sc/frame :title window-title
                           :width window-width
                           :height window-height)
@@ -87,7 +89,7 @@
             (flush))]
       (loop [scores initial-scores
              stack [nil]
-             idx lzero]
+             idx (long start-idx)]
         (print "scores ") (prn scores)
         ;;(print "stack " ) (prn stack)
         (print "idx ") (prn idx)
