@@ -119,6 +119,37 @@
                :succeed succeed
                :fail fail} input)))))
 
+(defn st
+  "token parser for sequences, takes a predicate that returns true/false
+  if first item in sequence is a match"
+  [predicate]
+  (fn [input succeed fail]
+    (let [bite (first input)]
+      (if (predicate bite)
+        (succeed bite
+                 (rest input))
+        (fail {:bite bite
+               :rest (rest input)
+               :succeed succeed
+               :fail fail}
+              input)))))
+
+(defn nst
+  "inverted version of st, token parser for sequences, takes a predicate that returns true/false
+  if first item in sequence is NOT a match"
+  [predicate]
+  (fn [input succeed fail]
+    (let [bite (first input)]
+      (if (or (empty? input)
+              (predicate bite))
+        (fail {:bite bite
+               :rest (rest input)
+               :succeed succeed
+               :fail fail}
+              input)
+        (succeed bite
+                 (rest input))))))
+
 ;; NOTE: On writing terminal parsers. In the above example, a string,
 ;; instead of being though of a sequence of characters, it can instead
 ;; be thought of as a sequence of regular expression matches. This
