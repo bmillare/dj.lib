@@ -25,43 +25,83 @@ where 11 is the hash of the value
     - since must be edn readable
     - and hash must match
   "
-  [path]
-  (with-open [reader (-> path
-                         cji/reader
-                         (java.io.PushbackReader.))]
-    (loop [ret (transient {})]
-      (let [recorded-v-hash (edn/read {:eof :end}
-                                 reader)]
-        (if (= :end recorded-v-hash)
-          (persistent! ret)
-          (if (number? recorded-v-hash)
-            (recur (try
-                     (let [k (edn/read reader)
-                           v (edn/read reader)
-                           v-hash (hash v)]
-                       (when (not= recorded-v-hash v-hash)
-                         (throw (ex-info (str "hash values do not match for key " k "'s value")
-                                         {:k k
-                                          :v v
-                                          :recorded-v-hash recorded-v-hash
-                                          :actual-v-hash v-hash})))
-                       (assoc! ret
-                               k
-                               v))
-                     (catch Exception e
-                       (throw (ex-info (str "unexpected error while reading " path)
-                                       {:current-kv-map (persistent! ret)
-                                        :path path
-                                        :recorded-v-hash recorded-v-hash}
-                                       e)))))
-            (throw (ex-info (str "incorrect input: expecting number as recorded-v-hash got " recorded-v-hash)
-                            {:recorded-v-hash recorded-v-hash}))))))))
+  [path & [{:keys [ignore-missing
+                   ignore-hash
+                   version] :or {ignore-missing true
+                                 ignore-hash false}}]]
+  (case version
+    :no-hash
+    (try
+      (with-open [reader (-> path
+                             cji/reader
+                             (java.io.PushbackReader.))]
+        (loop [ret (transient {})]
+          (let [k (edn/read {:eof ::end
+                             :default tagged-literal}
+                            reader)]
+            (if (= ::end k)
+              (persistent! ret)
+              (recur (try
+                       (let [v (edn/read {:default tagged-literal}
+                                         reader)]
+                         (assoc! ret
+                                 k
+                                 v))
+                       (catch Exception e
+                         (throw (ex-info (str "unexpected error while reading " path)
+                                         {:current-kv-map (persistent! ret)
+                                          :path path
+                                          :k k}
+                                         e)))))))))
+      (catch java.io.FileNotFoundException e
+        (if ignore-missing
+          {}
+          (throw e))))
+    (try
+      (with-open [reader (-> path
+                             cji/reader
+                             (java.io.PushbackReader.))]
+        (loop [ret (transient {})]
+          (let [recorded-v-hash (edn/read {:eof ::end
+                                           :default tagged-literal}
+                                          reader)]
+            (if (= ::end recorded-v-hash)
+              (persistent! ret)
+              (if (number? recorded-v-hash)
+                (recur (try
+                         (let [k (edn/read {:default tagged-literal}
+                                           reader)
+                               v (edn/read {:default tagged-literal}
+                                           reader)
+                               v-hash (hash v)]
+                           (when (and (not ignore-hash)
+                                      (not= recorded-v-hash v-hash))
+                             (throw (ex-info (str "hash values do not match for key " k "'s value")
+                                             {:k k
+                                              :v v
+                                              :recorded-v-hash recorded-v-hash
+                                              :actual-v-hash v-hash})))
+                           (assoc! ret
+                                   k
+                                   v))
+                         (catch Exception e
+                           (throw (ex-info (str "unexpected error while reading " path)
+                                           {:current-kv-map (persistent! ret)
+                                            :path path
+                                            :recorded-v-hash recorded-v-hash}
+                                           e)))))
+                (throw (ex-info (str "incorrect input: expecting number as recorded-v-hash got " recorded-v-hash)
+                                {:recorded-v-hash recorded-v-hash})))))))
+      (catch java.io.FileNotFoundException e
+        (if ignore-missing
+          {}
+          (throw e))))))
 
 #_ (read-kv-log-file "/home/bmillare/tmp/test.edn")
 #_ (read-kv-log-file "/home/bmillare/tmp/test2.edn")
 
 (defn write-entry!
-  "takes a :append writer to a file
+  "takes an :append writer to a file
 
   writes hash of v, k, and v as edn to file
   "
@@ -71,8 +111,17 @@ where 11 is the hash of the value
     (.write writer (str (pr-str k) " " (pr-str v) "\n"))
     (.flush writer)))
 
+(defn write-entry-v2!
+  "takes an :append writer to a file
+  (doesn't write hash, unlike v1)
+  writes k, and v as edn to file
+  "
+  [writer k v]
+  (.write writer (str (pr-str k) " " (pr-str v) "\n"))
+  (.flush writer))
+
 (defn write-entry-no-flush!
-  "takes a :append writer to a file
+  "takes an :append writer to a file
 
   writes hash of v, k, and v as edn to file
   "
@@ -82,7 +131,7 @@ where 11 is the hash of the value
     (.write writer (str (pr-str k) " " (pr-str v) "\n"))))
 
 (defn conj-entry-fn
-  "takes a :append writer to a file"
+  "takes an :append writer to a file"
   [^java.io.Writer writer]
   (fn conj-entry [m k v]
     (write-entry! writer k v)
@@ -95,7 +144,19 @@ where 11 is the hash of the value
       (write-entry! writer k v)
       (assoc m k v))))
 
-(defn assoc+save!-fn [^java.io.Writer writer]
+(defn update+save!-fn
+  "takes an :append writer to a file
+  alias for update-entry-fn"
+  [^java.io.Writer writer]
+  (fn update-entry [m f k args]
+    (let [v (apply f (get m k) args)]
+      (write-entry! writer k v)
+      (assoc m k v))))
+
+(defn assoc+save!-fn
+  "takes an :append writer to a file
+  alias for conj-entry-fn"
+  [^java.io.Writer writer]
   (fn assoc+save! [m k v]
     (write-entry! writer k v)
     (assoc m k v)))
@@ -109,6 +170,24 @@ where 11 is the hash of the value
   ([v]
    (agent v)))
 
+(defn write-kv!-fn
+  "creates a send-off like fn that writes kv to writer"
+  [the-agent ^java.io.Writer writer]
+  (fn write-kv!
+    [k v]
+    (send-off the-agent
+              (fn +writer [state]
+                (write-entry! writer k v)
+                (assoc state k v)))))
+
+(defn send-off-kv!
+  "send-off like fn that writes kv to writer"
+  [the-agent ^java.io.Writer writer k v]
+  (send-off the-agent
+            (fn +writer [state]
+              (write-entry! writer k v)
+              (assoc state k v))))
+
 (comment
   
   (def test-writer (kv-writer "/home/bmillare/tmp/test2.edn"))
@@ -120,6 +199,31 @@ where 11 is the hash of the value
   (send-off my-agent my-conj-entry :height 15)
   @my-agent
 
+  ;; 1. get file writer
+  ;; 2. get durable assoc/update via assoc+save!-fn or update+save!-fn
+  ;; 3. get state manager (agent)
+  ;; 4. **wait, rethinking
+
+  ;; v2
+  ;; 1. create agent
+  ;; 2. create write-kv! fn
+  ;; 2.opt track the writer
+  (def my-agent (kv-agent))
+  (def my-agent2 (kv-agent (read-kv-log-file "/home/bmillare/tmp/test2.edn")))
+  (def the-writer (kv-writer "/home/bmillare/tmp/test2.edn"))
+  (def write-kv! (write-kv!-fn my-agent the-writer))
+
+  (write-kv! assoc :name "bob")
+
+  ;; v3
+  ;; 1. create agent
+  ;; 2. create writer
+  ;; 3. call send-off-kv!
+  (def my-agent2 (kv-agent (read-kv-log-file "/home/bmillare/tmp/test2.edn")))
+  (def the-writer (kv-writer "/home/bmillare/tmp/test2.edn"))
+  (send-off-kv! my-agent2 the-writer :name "bob")
+  
+  
   )
 
 (defn map->storage-dumb
