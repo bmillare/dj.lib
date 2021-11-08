@@ -224,7 +224,7 @@ converts dependency graph into a graphviz friendly edge vector representing flow
   (let [args {:x 1, :y 2}
         fms {:add (fm [:x :y]
                       (+ x y))}
-        the-key :adad
+        the-key :add
         tf (treefm fms the-key)
         result (tf args)
         _ (-> tf
