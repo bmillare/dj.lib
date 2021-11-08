@@ -116,7 +116,7 @@ where 11 is the hash of the value
   (doesn't write hash, unlike v1)
   writes k, and v as edn to file
   "
-  [writer k v]
+  [^java.io.Writer writer k v]
   (.write writer (str (pr-str k) " " (pr-str v) "\n"))
   (.flush writer))
 

@@ -137,3 +137,19 @@ Convert clojure data representation of a graphviz file to the graphviz format
          (clojure.java.shell/sh type' "-Tsvg" :in)
          :out
          (clojure.java.shell/sh "display" :in))))
+
+(comment
+  (-> {:type :digraph
+       :name :graphname
+       :attributes {:graph {:size \"1,1\"}
+                    :node {:a {:label \"Foo\"}
+                           :b {:shape :box}}
+                    :edge {[:a :b] {:color :blue}
+                           [:b :c] {:color :blue}
+                           [:b :d] {:style :dotted}}}
+       :edges #{[:a :b]
+                [:b :c]
+                [:b :d]}}
+      graphviz
+      emit
+      (->> (spit "some-file.svg"))))
