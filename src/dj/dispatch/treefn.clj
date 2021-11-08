@@ -219,3 +219,18 @@ converts dependency graph into a graphviz friendly edge vector representing flow
                                 {}
                                 input)}
      :edges edges}))
+
+(comment
+  (let [args {:x 1, :y 2}
+        fms {:add (fm [:x :y]
+                      (+ x y))}
+        the-key :adad
+        tf (treefm fms the-key)
+        result (tf args)
+        _ (-> tf
+              graphviz-data
+              dj.template.graphviz/graphviz
+              (dj.template.graphviz/emit "dot")
+              (->> (spit "out.svg")))]
+    (-> results
+        (get the-key))))
