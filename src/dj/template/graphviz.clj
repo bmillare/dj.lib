@@ -141,8 +141,8 @@ Convert clojure data representation of a graphviz file to the graphviz format
 (comment
   (-> {:type :digraph
        :name :graphname
-       :attributes {:graph {:size \"1,1\"}
-                    :node {:a {:label \"Foo\"}
+       :attributes {:graph {:size "1,1"}
+                    :node {:a {:label "Foo"}
                            :b {:shape :box}}
                     :edge {[:a :b] {:color :blue}
                            [:b :c] {:color :blue}
