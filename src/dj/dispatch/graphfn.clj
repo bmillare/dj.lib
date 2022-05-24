@@ -1,4 +1,30 @@
 (ns dj.dispatch.graphfn
+  "similar to dj.dispatch.treefn but allows cyclic dependencies enabled
+  via late binding. Ideally, graphfn name would be dcg-fn for
+  directed-cyclic-graph fn and treefn would be dag-fn for
+  directed-acyclic-graph-fn. In both cases, an output map for keys ->
+  values is created from an input map of keys -> annotated
+  functions. These annotated functions call out direct and
+  late-bindings. (A TODO is to automatically detect what is direct vs
+  late binding, based on traversal algorithms over the dependency
+  relationship, computed at mutual-graphfn creation time.)
+
+  Taking advantage of late bindings is usually reserved for mutually
+  recursive function calls that conditionally terminate. For example,
+  function based parsers that might be composed via combinators like
+  in the parsing expression grammar library dj.algorithms.peg. Because
+  of this typical use case, if you don't need mutually recursive
+  functions, it's usually better to use treefns over graphfns. There
+  is more regular oversight over traversal over value map of treefns
+  over graphfns. Also, the call order and dependency relationship is
+  pre-analyzed, allowing you to introspect what is unused, build
+  graphical (visual) representations, do better logging, error
+  reporting, profiling of treefns. Also treefns, can theoretically be
+  compiled into a single inlined fn instead of using reduce to walk
+  over value order.
+
+  TLDR: Use graphfn to make reusuable/composable mutual local scope fns
+  "
   (:refer-clojure :exclude [fn])
   (:require [clojure.set :as cs]
             [dj.repl]))
