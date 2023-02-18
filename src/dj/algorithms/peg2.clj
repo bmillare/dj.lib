@@ -107,7 +107,7 @@
       (if (< cursor (count input))
         (let [input-char (.charAt input (int cursor))]
           (if (= input-char
-                 char-string-or-set)
+                 ^Character char-string-or-set)
             {:operator 'not-char-parser
              :parsed? false
              :input-char input-char
