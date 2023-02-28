@@ -67,14 +67,7 @@
       :result
       analyze-table))
 
-(def account-list
-  (read-entries "/home/bmillare/Documents/accounts/list.org"))
-
-(def account-properties
-  (read-entries "/home/bmillare/Documents/taxes/account_tax_properties.org"))
-
-(def account-checklist
-  (read-entries "/home/bmillare/Documents/taxes/tax_year_2022/account_checklist.org"))
+;; ----------------------------------------------------------------------
 
 (defn mapify-entries
   [entries k]
@@ -106,14 +99,12 @@
           left
           others))
 
-(def joined-table
-  (join-by-k account-list
-             "Account ID"
-             account-properties
-             account-checklist))
-
-(defn display-accounts [entries ordered-keys]
-  (let [f (javax.swing.JFrame. "my window")
+(defn display-table [entries {:keys [title ordered-keys width height] :or {title "a window"
+                                                                           width 800
+                                                                           height 600}}]
+  (let [ordered-keys (or ordered-keys
+                         (keys (first entries)))
+        f (javax.swing.JFrame. ^String title)
         table (javax.swing.JTable. (java.util.Vector. ^java.util.Collection
                                                       (mapv (fn [entry]
                                                               (java.util.Vector. ^java.util.Collection (mapv (fn [k]
@@ -130,29 +121,7 @@
               (.getContentPane))
       (.add (javax.swing.JScrollPane. table)))
     (doto f
-      (.setSize 800 600)
+      (.setSize (int width) (int height))
       #_ (.pack)
       (.setDefaultCloseOperation javax.swing.JFrame/DISPOSE_ON_CLOSE)
       (.setVisible true))))
-(declare the-frame)
-(when (bound? (resolve 'the-frame))
-  (let [f ^javax.swing.JFrame @(resolve 'the-frame)]
-    (.dispatchEvent f
-                    (java.awt.event.WindowEvent. f
-                                                 java.awt.event.WindowEvent/WINDOW_CLOSING))))
-(def the-frame
-  (display-accounts
-   (->> joined-table
-        (remove (fn [{has-tax "has tax document?"
-                      applicable? "applicable?"}]
-                  (or (= has-tax
-                         "false")
-                      (= applicable?
-                         "no"))))
-        (sort-by (fn [{applicable? "applicable?"
-                       t "Type"}]
-                   [applicable? t])))
-   ["Type" "Company" "Account ID" "Owners"
-    "has tax document?" "applicable?" "downloaded?" "submitted?"]))
-
-(set! *warn-on-reflection* true)
