@@ -45,10 +45,12 @@
               [:b :d]}}]
 
 (defn get-label [id]
-  (str (if (namespace id)
-         (str (namespace id) "/")
-         "")
-       (clojure.core/name id)))
+  (if (string? id)
+    id
+    (str (if (namespace id)
+               (str (namespace id) "/")
+               "")
+             (clojure.core/name id))))
 
 (defn emit-graph-attributes [attributes]
   (apply str
