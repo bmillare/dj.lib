@@ -1,24 +1,9 @@
 (ns dj.applications.timer
-  (:require [dj.durable :as dd])
+  (:require [dj.durable :as dd]
+            [dj.template.css :as dtc])
   (:import [javax.swing JFrame JPanel JLabel JButton Timer JTextArea]
            [java.awt.event ActionListener]))
 (set! *warn-on-reflection* true)
-
-"actual desired behavior
-
-- split: \"stops\" previous timer, starts new labeled category timer
-  - [X] actually exists as pre-labeled split buttons
-  - can add new categories via
-    - [X] code
-    - [ ] gui (later)
-- [ ] can add comments to labels (enable in data, add via GUI later)
-- [X] records data into files, so can continue after restart
-- log displayer
-  - [X] previous n splits
-  - pie chart of overall category fractions
-    - [ ] sum across category
-      - [ ] add up durations together
-"
 
 (defn to-datetime
   "java.util.Date -> java.time.datetime"
@@ -78,14 +63,24 @@
   #{"unlabeled"
     "break"
     "coding"
+    "help guests"
     "cooking"
+    "chores"
+    "exercise"
+    "weight training"
     "shopping"
     "eating"
     "sleeping"
+    "organizing"
     "morning routine"
+    "evening routine"
     "baby care"
+    "baby playing"
+    "learning"
     "cleaning"
-    "driving"})
+    "driving"
+    "pre-travel"
+    "planning"})
 
 (defn latest-time
   "given db as a map, O(n) determine most recent entry via java.util.Date"
@@ -106,7 +101,10 @@
   (let [sorted-times (sort (keys splits->data))]
     (map (fn [[t0 t1]]
            (let [data (splits->data t0)]
-             (merge data (duration-between t0 t1))))
+             (merge data
+                    (duration-between t0 t1)
+                    {:start t0
+                     :end t1})))
          (partition 2 1 sorted-times))))
 
 (defn aggregate-analysis
@@ -123,18 +121,62 @@
           {}
           analysis))
 
+(defn analysis->plot-data
+  [ag-analysis]
+  (sort-by second
+           (map (fn [[category ^java.time.Duration duration]]
+                  [category (.getSeconds duration)])
+                ag-analysis)))
+
+(defn random-color []
+  (let [digits ["0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "a" "b" "c" "d" "e" "f"]]
+    (str "#"
+         (rand-nth digits)
+         (rand-nth digits)
+         (rand-nth digits))))
+
+(defn plot-data->percentage-chart
+  [plot-data]
+  (let [total-seconds (reduce (fn [total [_ seconds]]
+                                (+ total seconds))
+                              0
+                              plot-data)
+        bar-height (fn bar-height [seconds]
+                     (str (long
+                           (* 1000
+                              (float (/ seconds total-seconds))))
+                          "px"))]
+    `[:div {:style "width: 400px;background-color: #aaa"}
+      ~@(map (fn [[category seconds]]
+               (let [height (bar-height seconds)]
+                 [:div {:style (dtc/->style {"text-align" "center"
+                                             "vertical-align" "middle"
+                                             "line-height" height
+                                             "height" height
+                                             "background-color" (random-color)
+                                             "border-style" "solid"
+                                             "border-width" "1px"})}
+                  (str category
+                       ": "
+                       (-> seconds
+                           (java.time.Duration/ofSeconds)
+                           duration-breakdown
+                           duration-str))]))
+             plot-data)]))
+
 (defn split-summary
   "given db, runs analysis and aggregate analysis, creates txt summary
   from this"
   [new-data]
   (let [split-analysis (analyze-splits new-data)]
-    (str "full log\n"
+    (str "partial log\n"
          (clojure.string/join "\n"
-                              (map (fn [{:keys [category]
-                                         :as entry}]
-                                     (str category ": "
-                                          (duration-str entry)))
-                                   split-analysis))
+                              (take 10
+                                    (map (fn [{:keys [category]
+                                               :as entry}]
+                                           (str category ": "
+                                                (duration-str entry)))
+                                         (reverse split-analysis))))
          "\n\nsummary\n"
          (clojure.string/join "\n"
                               (->> (aggregate-analysis split-analysis)
@@ -144,9 +186,42 @@
                                                (-> duration
                                                duration-breakdown
                                                duration-str)))))))))
-#_ (-> (dd/read-kv-log-file "/home/bmillare/Documents/timings.edn")
-    split-summary
-    println)
+
+(defn in-days-predicate [start-localdatetime days]
+  (let [^java.time.LocalDateTime start-localdatetime (if (string? start-localdatetime)
+                                                       (java.time.LocalDateTime/parse start-localdatetime)
+                                                       start-localdatetime)
+        ^java.time.LocalDateTime end-localdatetime (.plusDays start-localdatetime
+                                                              (long days))]
+    (fn in-days? [date]
+      (let [^java.time.LocalDateTime date (to-datetime date)]
+        (and (.isAfter date
+                     start-localdatetime)
+             (.isBefore date
+                        end-localdatetime))))))
+
+(defn in-breakdown-predicate [start-localdatetime {:keys [days hours minutes seconds local->system-hour-shift]
+                                                   :or {local->system-hour-shift 3}}]
+  (let [^java.time.LocalDateTime start-localdatetime (.plusHours ^java.time.LocalDateTime
+                                                                 (if (string? start-localdatetime)
+                                                                   (java.time.LocalDateTime/parse start-localdatetime)
+                                                                   start-localdatetime)
+                                                                 local->system-hour-shift)
+        ^java.time.LocalDateTime end-localdatetime (cond-> start-localdatetime
+                                                     days
+                                                     (.plusDays (long days))
+                                                     hours
+                                                     (.plusHours (long hours))
+                                                     minutes
+                                                     (.plusMinutes (long minutes))
+                                                     seconds
+                                                     (.plusSeconds (long seconds)))]
+    (fn in-days? [date]
+      (let [^java.time.LocalDateTime date (to-datetime date)]
+        (and (.isAfter date
+                     start-localdatetime)
+             (.isBefore date
+                      end-localdatetime))))))
 
 (defn create-stopwatch [path]
   (let [store (dd/kv-agent (dd/read-kv-log-file path))
