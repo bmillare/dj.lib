@@ -332,12 +332,16 @@
                                         m))]
     (fn html-body [req]
       (let [prev-category (when (:body req)
-                            (java.net.URLDecoder/decode (slurp (:body req))))
+                            (first
+                             (cstr/split (java.net.URLDecoder/decode (slurp (:body req)))
+                                         #"=")))
             now-store @store
             latest-date (latest-time now-store)
             latest-entry (now-store latest-date)
             latest-datetime (to-datetime latest-date)]
-        (when prev-category
+        (when (and prev-category
+                   (not= prev-category
+                         (:category latest-entry)))
           (record-split {:category prev-category}))
         (dts/emit [[:!DOCTYPE "html"]
                    [:html {:lang "en"}
@@ -353,7 +357,7 @@ button {height: 50px; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px;}
 button:hover {cursor: pointer;}
 .public-log {width: 20%; border-style: dotted; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px; float: right; overflow-y: scroll; height: 300px;}"]])
                     [:body {}
-                     `[:div {:id "app" :style ~(dtc/->style {:display "inline-block"})}
+                     `[:div {:id "app" :style ~(dtc/->style {:float "left"})}
                        [:form {:action ""
                                :method "post"}
                         [:div {}
@@ -368,9 +372,11 @@ button:hover {cursor: pointer;}
                         ~@(for [category (sort default-categories)]
                             [:div {}
                              [:input {:type "submit"
+                                      :style (dtc/->style {:width "300px"
+                                                           :height "35px"})
                                       :name category
                                       :value category}]])]]
-                     [:div {:style (dtc/->style {:display "inline-block"})}
+                     [:div {:style (dtc/->style {:float "left"})}
                       (let [p (in-breakdown-predicate (start-localdatetime
                                                        (java.util.Date.))
                                                       {:days 1})]
