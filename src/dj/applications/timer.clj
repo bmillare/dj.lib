@@ -1,6 +1,8 @@
 (ns dj.applications.timer
   (:require [dj.durable :as dd]
-            [dj.template.css :as dtc])
+            [dj.template.sgml :as dts]
+            [dj.template.css :as dtc]
+            [clojure.string :as cstr])
   (:import [javax.swing JFrame JPanel JLabel JButton Timer JTextArea]
            [java.awt.event ActionListener]))
 (set! *warn-on-reflection* true)
@@ -60,27 +62,28 @@
              m))
 
 (def default-categories
-  #{"unlabeled"
-    "break"
-    "coding"
-    "help guests"
-    "cooking"
-    "chores"
-    "exercise"
-    "weight training"
-    "shopping"
-    "eating"
-    "sleeping"
-    "organizing"
-    "morning routine"
-    "evening routine"
-    "baby care"
+  #{"baby care"
     "baby playing"
-    "learning"
+    "break"
+    "chores"
     "cleaning"
+    "coding"
+    "cooking"
     "driving"
+    "eating"
+    "evening routine"
+    "exercise"
+    "help guests"
+    "household work"
+    "learning"
+    "morning routine"
+    "organizing"
+    "planning"
     "pre-travel"
-    "planning"})
+    "shopping"
+    "sleeping"
+    "unlabeled"
+    "weight training"})
 
 (defn latest-time
   "given db as a map, O(n) determine most recent entry via java.util.Date"
@@ -202,10 +205,11 @@
 
 (defn in-breakdown-predicate [start-localdatetime {:keys [days hours minutes seconds local->system-hour-shift]
                                                    :or {local->system-hour-shift 3}}]
-  (let [^java.time.LocalDateTime start-localdatetime (.plusHours ^java.time.LocalDateTime
-                                                                 (if (string? start-localdatetime)
-                                                                   (java.time.LocalDateTime/parse start-localdatetime)
-                                                                   start-localdatetime)
+  (let [^java.time.LocalDateTime start-localdatetime 
+        (if (string? start-localdatetime)
+          (java.time.LocalDateTime/parse start-localdatetime)
+          start-localdatetime)
+        ^java.time.LocalDateTime start-localdatetime (.plusHours start-localdatetime
                                                                  local->system-hour-shift)
         ^java.time.LocalDateTime end-localdatetime (cond-> start-localdatetime
                                                      days
@@ -219,9 +223,9 @@
     (fn in-days? [date]
       (let [^java.time.LocalDateTime date (to-datetime date)]
         (and (.isAfter date
-                     start-localdatetime)
+                       start-localdatetime)
              (.isBefore date
-                      end-localdatetime))))))
+                        end-localdatetime))))))
 
 (defn create-stopwatch [path]
   (let [store (dd/kv-agent (dd/read-kv-log-file path))
@@ -266,9 +270,9 @@
                       (.toURI)
                       (.toURL))
         icon (javax.swing.ImageIcon. image-url)
-        splits-frame (JFrame. "Splits")
-        splits-text (JTextArea.)
-        splits-panel (doto (JPanel.)
+        ;splits-frame (JFrame. "Splits")
+        ;splits-text (JTextArea.)
+        #_ #_ splits-panel (doto (JPanel.)
                        (.setLayout (java.awt.FlowLayout.))
                        (.add splits-text))]
     (doto timer
@@ -293,16 +297,16 @@
       (.setSize (int 400) (int 600))
       (.setIconImage (.getImage icon))
       (.setVisible true))
-    (.setText splits-text
+    #_ (.setText splits-text
               ^String
               (split-summary @store))
-    (add-watch store
+    #_ (add-watch store
                :splits-frame
                (fn [key ref old new-data]
                  (.setText splits-text
                            ^String
                            (split-summary new-data))))
-    (doto splits-frame
+    #_ (doto splits-frame
       (.add splits-panel)
       (.addWindowListener (proxy [java.awt.event.WindowAdapter] []
                             (windowClosing [e]
@@ -312,3 +316,87 @@
       (.setSize (int 400) (int 600))
       (.setIconImage (.getImage icon))
       (.setVisible true))))
+
+(defn start-localdatetime [date]
+  (let [dt ^java.time.LocalDateTime (to-datetime date)]
+    (-> dt
+        (.toLocalDate)
+        (.atTime java.time.LocalTime/MIDNIGHT))))
+
+(defn make-html-body [store
+                      store-writer]
+  (let [record-split (fn record-split [m]
+                       (dd/send-off-kv! store
+                                        store-writer
+                                        (java.util.Date.)
+                                        m))]
+    (fn html-body [req]
+      (let [prev-category (when (:body req)
+                            (java.net.URLDecoder/decode (slurp (:body req))))
+            now-store @store
+            latest-date (latest-time now-store)
+            latest-entry (now-store latest-date)
+            latest-datetime (to-datetime latest-date)]
+        (when prev-category
+          (record-split {:category prev-category}))
+        (dts/emit [[:!DOCTYPE "html"]
+                   [:html {:lang "en"}
+                    (into [:head {}
+                           [:meta {:charset "utf-8"}]
+                           [:title {} "Stopwatch"]
+                           [:link {:rel "icon"
+                                   :href "data:;base64,iVBORw0KGgo="}]
+                           [:style {:type "text/css"}
+                            "img:hover {position: relative; top: -10px; cursor: pointer;}
+.selected {width: 80px;}
+button {height: 50px; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px;}
+button:hover {cursor: pointer;}
+.public-log {width: 20%; border-style: dotted; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px; float: right; overflow-y: scroll; height: 300px;}"]])
+                    [:body {}
+                     `[:div {:id "app" :style ~(dtc/->style {:display "inline-block"})}
+                       [:form {:action ""
+                               :method "post"}
+                        [:div {}
+                         ~(str "post category: " prev-category)]
+                        ~@(for [x [(str "latest: " latest-datetime)
+                                   (str "category: " (:category latest-entry))
+                                   (str "duration: " (-> (duration-between (java.util.Date.)
+                                                                           latest-date)
+                                                         duration-str))]]
+                            [:div {}
+                             x])
+                        ~@(for [category (sort default-categories)]
+                            [:div {}
+                             [:input {:type "submit"
+                                      :name category
+                                      :value category}]])]]
+                     [:div {:style (dtc/->style {:display "inline-block"})}
+                      (let [p (in-breakdown-predicate (start-localdatetime
+                                                       (java.util.Date.))
+                                                      {:days 1})]
+                        (->> now-store
+                             analyze-splits
+                             (filter (fn [{:keys [start]}]
+                                       (p start)))
+                             aggregate-analysis
+                             analysis->plot-data
+                             plot-data->percentage-chart))]]]])))))
+
+(defn logger [path]
+  (fn log [content]
+    (spit path
+          (prn-str (into [(java.util.Date.)] content)) :append true)))
+
+(defn make-server-handler [log html-body]
+  (fn server-handler [req]
+    (try
+      (let [resp (let [{:keys [uri]} req
+                       [_ op] (cstr/split uri #"/" 4)]
+                   {:status 200
+                    :headers {"Content-Type" "text/html; charset=utf-8"}
+                    :body (html-body req)})]
+        (log [req resp])
+        resp)
+      (catch Exception e
+        (log [req e])
+        (throw e)))))
