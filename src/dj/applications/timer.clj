@@ -323,84 +323,87 @@
         (.toLocalDate)
         (.atTime java.time.LocalTime/MIDNIGHT))))
 
-(defn make-html-body [store
+(defn make-request-handler [store
                       store-writer]
   (let [record-split (fn record-split [m]
                        (dd/send-off-kv! store
                                         store-writer
                                         (java.util.Date.)
                                         m))]
-    (fn html-body [req]
-      (let [prev-category (when (:body req)
-                            (first
-                             (cstr/split (java.net.URLDecoder/decode (slurp (:body req)))
-                                         #"=")))
+    (fn request-handler [req]
+      (let [{:keys [uri]} req
+            [_ op] (cstr/split uri #"/" 4)
             now-store @store
             latest-date (latest-time now-store)
             latest-entry (now-store latest-date)
-            latest-datetime (to-datetime latest-date)]
-        (when (and prev-category
-                   (not= prev-category
-                         (:category latest-entry)))
-          (record-split {:category prev-category}))
-        (dts/emit [[:!DOCTYPE "html"]
-                   [:html {:lang "en"}
-                    (into [:head {}
-                           [:meta {:charset "utf-8"}]
-                           [:title {} "Stopwatch"]
-                           [:link {:rel "icon"
-                                   :href "data:;base64,iVBORw0KGgo="}]
-                           [:style {:type "text/css"}
-                            "img:hover {position: relative; top: -10px; cursor: pointer;}
+            latest-datetime (to-datetime latest-date)
+            prev-category (when (:body req)
+                            (first
+                             (cstr/split (java.net.URLDecoder/decode (slurp (:body req)))
+                                         #"=")))]
+        (case op
+          "submit"
+          (do
+            (when (and prev-category
+                       (not= prev-category
+                             (:category latest-entry)))
+              (record-split {:category prev-category}))
+            {:status 302
+             :headers {"Location" "/"}})
+          {:status 200
+           :headers {"Content-Type" "text/html; charset=utf-8"}
+           :body (dts/emit [[:!DOCTYPE "html"]
+                            [:html {:lang "en"}
+                             (into [:head {}
+                                    [:meta {:charset "utf-8"}]
+                                    [:title {} "Stopwatch"]
+                                    [:link {:rel "icon"
+                                            :href "data:;base64,iVBORw0KGgo="}]
+                                    [:style {:type "text/css"}
+                                     "img:hover {position: relative; top: -10px; cursor: pointer;}
 .selected {width: 80px;}
 button {height: 50px; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px;}
 button:hover {cursor: pointer;}
 .public-log {width: 20%; border-style: dotted; margin: 5px 5px 5px 5px; padding: 5px 5px 5px 5px; float: right; overflow-y: scroll; height: 300px;}"]])
-                    [:body {}
-                     `[:div {:id "app" :style ~(dtc/->style {:float "left"})}
-                       [:form {:action ""
-                               :method "post"}
-                        [:div {}
-                         ~(str "post category: " prev-category)]
-                        ~@(for [x [(str "latest: " latest-datetime)
-                                   (str "category: " (:category latest-entry))
-                                   (str "duration: " (-> (duration-between (java.util.Date.)
-                                                                           latest-date)
-                                                         duration-str))]]
-                            [:div {}
-                             x])
-                        ~@(for [category (sort default-categories)]
-                            [:div {}
-                             [:input {:type "submit"
-                                      :style (dtc/->style {:width "300px"
-                                                           :height "35px"})
-                                      :name category
-                                      :value category}]])]]
-                     [:div {:style (dtc/->style {:float "left"})}
-                      (let [p (in-breakdown-predicate (start-localdatetime
-                                                       (java.util.Date.))
-                                                      {:days 1})]
-                        (->> now-store
-                             analyze-splits
-                             (filter (fn [{:keys [start]}]
-                                       (p start)))
-                             aggregate-analysis
-                             analysis->plot-data
-                             plot-data->percentage-chart))]]]])))))
+                             [:body {}
+                              `[:div {:id "app" :style ~(dtc/->style {:float "left"})}
+                                [:form {:action "/submit"
+                                        :method "post"}
+                                 ~@(for [x [(str "latest: " latest-datetime)
+                                            (str "category: " (:category latest-entry))
+                                            (str "duration: " (-> (duration-between (java.util.Date.)
+                                                                                    latest-date)
+                                                                  duration-str))]]
+                                     [:div {}
+                                      x])
+                                 ~@(for [category (sort default-categories)]
+                                     [:div {}
+                                      [:input {:type "submit"
+                                               :style (dtc/->style {:width "300px"
+                                                                    :height "35px"})
+                                               :name category
+                                               :value category}]])]]
+                              [:div {:style (dtc/->style {:float "left"})}
+                               (let [p (in-breakdown-predicate (start-localdatetime
+                                                                (java.util.Date.))
+                                                               {:days 1})]
+                                 (->> now-store
+                                      analyze-splits
+                                      (filter (fn [{:keys [start]}]
+                                                (p start)))
+                                      aggregate-analysis
+                                      analysis->plot-data
+                                      plot-data->percentage-chart))]]]])})))))
 
 (defn logger [path]
   (fn log [content]
     (spit path
           (prn-str (into [(java.util.Date.)] content)) :append true)))
 
-(defn make-server-handler [log html-body]
+(defn make-server-handler [log request-handler]
   (fn server-handler [req]
     (try
-      (let [resp (let [{:keys [uri]} req
-                       [_ op] (cstr/split uri #"/" 4)]
-                   {:status 200
-                    :headers {"Content-Type" "text/html; charset=utf-8"}
-                    :body (html-body req)})]
+      (let [resp (request-handler req)]
         (log [req resp])
         resp)
       (catch Exception e
