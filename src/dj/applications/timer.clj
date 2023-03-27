@@ -15,6 +15,34 @@
       (.atZone (java.time.ZoneId/systemDefault))
       (.toLocalDateTime)))
 
+(defn to-pst-datetime
+  "java.util.Date -> java.time.datetime"
+  [^java.util.Date date]
+  (-> date
+      (.toInstant)
+      (.atZone (java.time.ZoneId/of "America/Los_Angeles"))
+      (.toLocalDateTime)))
+
+(let [thread-local-utc-date-format (proxy [ThreadLocal] []
+                                     (initialValue []
+                                       (doto (java.text.SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss.SSS-00:00")
+                                         ;; RFC3339 says to use -00:00 when the timezone is unknown (+00:00 implies a known GMT)
+                                         (.setTimeZone (java.util.TimeZone/getTimeZone "GMT")))))]
+  (defn str-date [^java.util.Date date]
+    (let [^java.text.DateFormat utc-format (.get thread-local-utc-date-format)]
+      (.format utc-format date))))
+
+(defn to-date
+  [^java.time.LocalDateTime datetime]
+  (-> datetime
+      (.atZone (java.time.ZoneId/of "America/Los_Angeles"))
+      (.toInstant)
+      java.util.Date/from))
+#_ (-> "2023-03-24T08:45:00"
+    java.time.LocalDateTime/parse
+    to-date
+    to-datetime)
+
 (defn duration-breakdown
   "create data entry of breakdown from java.time.duration"
   [^java.time.Duration duration]
@@ -62,28 +90,50 @@
              m))
 
 (def default-categories
+  #_ #{"baby care"
+       "baby playing"
+       "break"
+       "chores"
+       "cleaning"
+       "coding"
+       "cooking"
+       "driving"
+       "eating"
+       "evening routine"
+       "exercise"
+       "help guests"
+       "household work"
+       "learning"
+       "morning routine"
+       "organizing"
+       "planning"
+       "pre-travel"
+       "shopping"
+       "sleeping"
+       "unlabeled"
+       "weight training"
+       "work"}
+  ;; Lan's categories
   #{"baby care"
     "baby playing"
     "break"
     "chores"
-    "cleaning"
-    "coding"
     "cooking"
-    "driving"
     "eating"
     "evening routine"
     "exercise"
-    "help guests"
     "household work"
     "learning"
     "morning routine"
     "organizing"
+    "physical therapy"
     "planning"
-    "pre-travel"
+    "resting"
     "shopping"
     "sleeping"
+    "travel"
     "unlabeled"
-    "weight training"})
+    "work"})
 
 (defn latest-time
   "given db as a map, O(n) determine most recent entry via java.util.Date"
@@ -204,7 +254,7 @@
                         end-localdatetime))))))
 
 (defn in-breakdown-predicate [start-localdatetime {:keys [days hours minutes seconds local->system-hour-shift]
-                                                   :or {local->system-hour-shift 3}}]
+                                                   :or {local->system-hour-shift 1}}]
   (let [^java.time.LocalDateTime start-localdatetime 
         (if (string? start-localdatetime)
           (java.time.LocalDateTime/parse start-localdatetime)
@@ -320,16 +370,54 @@
 (defn start-localdatetime [date]
   (let [dt ^java.time.LocalDateTime (to-datetime date)]
     (-> dt
+        (.plusHours -1) ;; laptop -> actual local time
         (.toLocalDate)
         (.atTime java.time.LocalTime/MIDNIGHT))))
 
+(defn add-now-unlabeled
+  "for allowing analysis to take into account current running task"
+  [store-value]
+  (assoc store-value
+         (java.util.Date.)
+         {:category "unlabeled"}))
+
+(defn read-post [txt]
+  (reduce (fn [m entry]
+            (let [[k v] (cstr/split entry #"=")]
+              (assoc m k v)))
+          {}
+          (cstr/split txt #"&")))
+
+(defn past-entries [db n]
+  (let [sorted-times (take-last n (sort (keys db)))]
+    (map (fn [time]
+           [time
+            (db time)])
+         sorted-times)))
+
+(defn filter-ignored [m]
+  (reduce-kv (fn [ret k {i? :ignore? :as v}]
+               (if i?
+                 ret
+                 (assoc ret
+                       k
+                       v)))
+             {}
+             m))
+
 (defn make-request-handler [store
-                      store-writer]
+                            store-writer]
   (let [record-split (fn record-split [m]
                        (dd/send-off-kv! store
                                         store-writer
                                         (java.util.Date.)
-                                        m))]
+                                        m))
+        record-manual-split
+        (fn record-manual-split [date m]
+          (dd/send-off-kv! store
+                           store-writer
+                           date
+                           m))]
     (fn request-handler [req]
       (let [{:keys [uri]} req
             [_ op] (cstr/split uri #"/" 4)
@@ -337,13 +425,35 @@
             latest-date (latest-time now-store)
             latest-entry (now-store latest-date)
             latest-datetime (to-datetime latest-date)
-            prev-category (when (:body req)
-                            (first
-                             (cstr/split (java.net.URLDecoder/decode (slurp (:body req)))
-                                         #"=")))]
+            body-kv (when (:body req)
+                      (-> req
+                          :body
+                          slurp
+                          java.net.URLDecoder/decode
+                          read-post))]
         (case op
+          "ignore"
+          (let [date (clojure.instant/read-instant-date (first (keys body-kv)))
+                {i? :ignore? :as entry} (get now-store date)
+                new-entry (assoc entry
+                                 :ignore? (not i?))]
+            (record-manual-split
+             date
+             new-entry)
+            {:status 302
+             :headers {"Location" "/"}})
+          "manual"
+          (let [{:strs [category datetime]} body-kv]
+            (prn {:kv body-kv
+                  :dt (java.time.LocalDateTime/parse datetime)
+                  :submit (record-manual-split (to-date
+                                                (java.time.LocalDateTime/parse datetime))
+                                               {:category category})})
+            {:status 302
+             :headers {"Location" "/"}})
           "submit"
-          (do
+          (let [prev-category (when body-kv
+                                (get body-kv "category"))]
             (when (and prev-category
                        (not= prev-category
                              (:category latest-entry)))
@@ -380,20 +490,54 @@ button:hover {cursor: pointer;}
                                      [:div {}
                                       [:input {:type "submit"
                                                :style (dtc/->style {:width "300px"
-                                                                    :height "35px"})
-                                               :name category
+                                                                    :height "50px"})
+                                               :name "category"
                                                :value category}]])]]
                               [:div {:style (dtc/->style {:float "left"})}
                                (let [p (in-breakdown-predicate (start-localdatetime
                                                                 (java.util.Date.))
                                                                {:days 1})]
                                  (->> now-store
+                                      filter-ignored
+                                      add-now-unlabeled
                                       analyze-splits
-                                      (filter (fn [{:keys [start]}]
-                                                (p start)))
+                                      (filter (fn [{:keys [start end]}]
+                                                (or (p start)
+                                                    #_ (and end
+                                                            (p end)))))
                                       aggregate-analysis
                                       analysis->plot-data
-                                      plot-data->percentage-chart))]]]])})))))
+                                      plot-data->percentage-chart))]
+                              [:form {:action "/manual"
+                                      :method "post"}
+                               [:label {:for "datetime"} "New datetime: (this works now)"]
+                               [:input {:type "datetime-local"
+                                        :name "datetime"}]
+                               (into [:select {:name "category"}]
+                                     (map (fn [category]
+                                            [:option {:value category}
+                                             category])
+                                          (sort default-categories)))
+                               [:input {:type "submit"
+                                        :name "submit"
+                                        :value "submit manual"}]]
+                              (-> [:form {:action "/ignore"
+                                          :method "post"}
+                                   [:label {} "Toggle ignore past 15"]]
+                                  (into (map (fn [[date {c :category
+                                                         i? :ignore?}]]
+                                               [:div {}
+                                                [:input {:type "submit"
+                                                         :style (dtc/->style {:width "300px"
+                                                                              :height "50px"})
+                                                         :name (str-date date)
+                                                         :value (str (to-pst-datetime date)
+                                                                     " "
+                                                                     c
+                                                                     (when i?
+                                                                       " IGNORE"))}]])
+                                             (past-entries now-store
+                                                           15))))]]])})))))
 
 (defn logger [path]
   (fn log [content]
