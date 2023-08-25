@@ -128,7 +128,7 @@
     "organizing"
     "physical therapy"
     "planning"
-    "resting"
+    ; "resting"
     "shopping"
     "sleeping"
     "travel"
@@ -508,36 +508,38 @@ button:hover {cursor: pointer;}
                                       aggregate-analysis
                                       analysis->plot-data
                                       plot-data->percentage-chart))]
-                              [:form {:action "/manual"
-                                      :method "post"}
-                               [:label {:for "datetime"} "New datetime: (this works now)"]
-                               [:input {:type "datetime-local"
-                                        :name "datetime"}]
-                               (into [:select {:name "category"}]
-                                     (map (fn [category]
-                                            [:option {:value category}
-                                             category])
-                                          (sort default-categories)))
-                               [:input {:type "submit"
-                                        :name "submit"
-                                        :value "submit manual"}]]
-                              (-> [:form {:action "/ignore"
-                                          :method "post"}
-                                   [:label {} "Toggle ignore past 15"]]
-                                  (into (map (fn [[date {c :category
-                                                         i? :ignore?}]]
-                                               [:div {}
-                                                [:input {:type "submit"
-                                                         :style (dtc/->style {:width "300px"
-                                                                              :height "50px"})
-                                                         :name (str-date date)
-                                                         :value (str (to-pst-datetime date)
-                                                                     " "
-                                                                     c
-                                                                     (when i?
-                                                                       " IGNORE"))}]])
-                                             (past-entries now-store
-                                                           15))))]]])})))))
+                              [:div {:style (dtc/->style {:float "left"})}
+                               [:form {:action "/manual"
+                                       :method "post"}
+                                [:label {:for "datetime"} "New datetime: "]
+                                [:input {:type "datetime-local"
+                                         :name "datetime"}]
+                                (into [:select {:name "category"}]
+                                      (map (fn [category]
+                                             [:option {:value category}
+                                              category])
+                                           (sort default-categories)))
+                                [:input {:type "submit"
+                                         :name "submit"
+                                         :value "submit manual"}]]
+                               (-> [:form {:action "/ignore"
+                                           :method "post"}
+                                    [:label {} "Toggle ignore past 15"]]
+                                   (into (map (fn [[date {c :category
+                                                          i? :ignore?}]]
+                                                [:div {}
+                                                 [:label {} (str (to-pst-datetime date)
+                                                                 " "
+                                                                 c
+                                                                 " ")]
+                                                 [:input {:type "submit"
+                                                          :style (dtc/->style {:height "50px"})
+                                                          :name (str-date date)
+                                                          :value (if i?
+                                                                   "REVEAL"
+                                                                   "IGNORE")}]])
+                                              (past-entries now-store
+                                                            15))))]]]])})))))
 
 (defn logger [path]
   (fn log [content]

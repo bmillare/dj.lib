@@ -97,6 +97,44 @@ where 11 is the hash of the value
           {}
           (throw e))))))
 
+(defn read-tx-log-as-history
+  "given file/path that refers to history of transactions (transaction
+  is just a list of kv updates) produce history of databases (vector
+  of different db values)
+  "
+  [path & [{:keys [ignore-missing]
+            :or {ignore-missing true}}]]
+  (try
+    (with-open [reader (-> path
+                           cji/reader
+                           (java.io.PushbackReader.))]
+      (loop [ret (transient [{}])]
+        (let [tx (edn/read {:eof ::end
+                           :default tagged-literal}
+                          reader)]
+          (if (= ::end tx)
+            (persistent! ret)
+            (recur (try
+                     (let [i (dec (count ret))
+                           db (ret i)]
+                       (conj! ret
+                              (reduce (fn [db' [k v]]
+                                        (assoc db'
+                                               k
+                                               v))
+                                      db
+                                      tx)))
+                     (catch Exception e
+                       (throw (ex-info (str "unexpected error while reading " path)
+                                       {:current-kv-map (peek (persistent! ret))
+                                        :path path
+                                        :tx tx}
+                                       e)))))))))
+    (catch java.io.FileNotFoundException e
+      (if ignore-missing
+        [{}]
+        (throw e)))))
+
 #_ (read-kv-log-file "/home/bmillare/tmp/test.edn")
 #_ (read-kv-log-file "/home/bmillare/tmp/test2.edn")
 
@@ -118,6 +156,15 @@ where 11 is the hash of the value
   "
   [^java.io.Writer writer k v]
   (.write writer (str (pr-str k) " " (pr-str v) "\n"))
+  (.flush writer))
+
+(defn write-transaction!
+  "takes an :append writer to a file
+  (doesn't write hash, unlike v1)
+  writes k, and v as edn to file
+  "
+  [^java.io.Writer writer tx]
+  (.write writer (str (pr-str tx) "\n"))
   (.flush writer))
 
 (defn write-entry-no-flush!
@@ -164,6 +211,15 @@ where 11 is the hash of the value
 (defn kv-writer [path]
   (cji/writer path :append true))
 
+(defn tx-writer [path]
+  (cji/writer path :append true))
+
+(defn tx-agent
+  ([]
+   (agent [{}]))
+  ([v]
+   (agent v)))
+
 (defn kv-agent
   ([]
    (agent {}))
@@ -172,13 +228,30 @@ where 11 is the hash of the value
 
 (defn write-kv!-fn
   "creates a send-off like fn that writes kv to writer"
-  [the-agent ^java.io.Writer writer]
+  [the-agent ^java.io.Writer writer {:keys [write-entry-fn!]
+                                     :or {write-entry-fn write-entry!}}]
   (fn write-kv!
     [k v]
     (send-off the-agent
               (fn +writer [state]
-                (write-entry! writer k v)
+                (write-entry-fn! writer k v)
                 (assoc state k v)))))
+
+(defn txs-as-history!-fn
+  "creates a send-off like fn that writes kvs to writer history style"
+  [the-agent ^java.io.Writer writer]
+  (fn transact!
+    [tx]
+    (send-off the-agent
+              (fn +writer [state]
+                (write-transaction! writer tx)
+                (let [i (dec (count state))
+                      db (state i)]
+                  (conj state
+                        (reduce (fn [db' [k v]]
+                                  (assoc db' k v))
+                                db
+                                tx)))))))
 
 (defn send-off-kv!
   "send-off like fn that writes kv to writer"
