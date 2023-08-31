@@ -241,17 +241,26 @@ where 11 is the hash of the value
   "creates a send-off like fn that writes kvs to writer history style"
   [the-agent ^java.io.Writer writer]
   (fn transact!
-    [tx]
+    [f]
     (send-off the-agent
               (fn +writer [state]
-                (write-transaction! writer tx)
                 (let [i (dec (count state))
-                      db (state i)]
-                  (conj state
-                        (reduce (fn [db' [k v]]
-                                  (assoc db' k v))
-                                db
-                                tx)))))))
+                      db (state i)
+                      tx (f db)]
+                  ;; ignore empty
+                  (if (empty? tx)
+                    state
+                    (let [new-db (reduce (fn [db' [k v]]
+                                           (assoc db' k v))
+                                         db
+                                         tx)]
+                      ;; ignore no change
+                      (if (= new-db db)
+                        state
+                        (do
+                          (write-transaction! writer tx)
+                          (conj state
+                                new-db))))))))))
 
 (defn send-off-kv!
   "send-off like fn that writes kv to writer"
