@@ -238,28 +238,38 @@ where 11 is the hash of the value
                 (assoc state k v)))))
 
 (defn txs-as-history!-fn
-  "creates a send-off like fn that writes kvs to writer history style"
+  "creates a send-off like fn that writes kvs to writer history style
+
+  - history is just a vector of dbs
+  - apply f to latest db
+  - tx is just kv map
+  - nil values signal dissoc
+  - k can be anything
+  - append writes tx to file before updating memory
+"
   [the-agent ^java.io.Writer writer]
   (fn transact!
     [f]
     (send-off the-agent
-              (fn +writer [state]
-                (let [i (dec (count state))
-                      db (state i)
+              (fn +writer [history]
+                (let [i (dec (count history))
+                      db (history i)
                       tx (f db)]
                   ;; ignore empty
                   (if (empty? tx)
-                    state
+                    history
                     (let [new-db (reduce (fn [db' [k v]]
-                                           (assoc db' k v))
+                                           (if (nil? v)
+                                             (dissoc db' k)
+                                             (assoc db' k v)))
                                          db
                                          tx)]
                       ;; ignore no change
                       (if (= new-db db)
-                        state
+                        history
                         (do
                           (write-transaction! writer tx)
-                          (conj state
+                          (conj history
                                 new-db))))))))))
 
 (defn send-off-kv!
@@ -305,6 +315,19 @@ where 11 is the hash of the value
   (def the-writer (kv-writer "/home/bmillare/tmp/test2.edn"))
   (send-off-kv! my-agent2 the-writer :name "bob")
   
+
+  ;; New datomic inspired: file and in-memory is vector of dbs
+  ;; - db is just a hashmap
+  ;; - tx is just a hashmap to merge in, nil values signal dissoc
+  ;; - file storage is just tx-log (vector of txs), history can be derived
+  ;; - if history is large, easy to ignore x previous entries
+  {:db-writer '(tx-writer db-file-path)
+   :tx-log-data '(read-tx-log-as-history db-file-path)
+   :db-init '(foo tx-log-data) ;;custom post-process of loaded db
+   :db '(tx-agent db-init)
+   :tx! '(txs-as-history!-fn db db-writer)
+   }
+
   
   )
 

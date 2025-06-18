@@ -7,8 +7,8 @@
 (p/defp ::pad (p/m (p/* " " 1)
                    cs/join))
 (p/defp ::text-to-line (p/m (p/s :text (p/* (p/! \newline))
-                             :newline (p/| :newline \newline
-                                           :eof ::p/eof))
+                                 :newline (p/| :newline \newline
+                                               :eof ::p/eof))
                             (comp
                              cs/join
                              :text)))

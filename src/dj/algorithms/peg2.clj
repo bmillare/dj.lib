@@ -190,6 +190,21 @@
                  old-cursor)
           parse-data)))))
 
+(defn negative-lookahead
+  [registry p]
+  (let [p (parser p registry)]
+    (fn negative-lookahead-parser [input cursor]
+      (let [{:keys [:parsed? :old-cursor] :as parse-data} (p input cursor)]
+        (if parsed?
+          (assoc parse-data
+                 :parsed? false
+                 :new-cursor
+                 cursor)
+          (assoc parse-data
+                 :parsed? true
+                 :new-cursor
+                 cursor))))))
+
 (defn star
   ([registry p]
    (star registry p 0 nil))
@@ -312,7 +327,7 @@
   (swap! registry
          assoc
          k
-         p))
+         (parser p registry)))
 
 (def default-components
   {::eof (fn [input cursor]
@@ -324,7 +339,20 @@
               :parsed? true
               :result nil
               :old-cursor cursor
-              :new-cursor cursor}))})
+              :new-cursor cursor}))
+   ::any (fn [input cursor]
+           (if (< cursor (count input))
+             (let [new-cursor (inc cursor)]
+               {:operator ::any
+                :parsed? true
+                :result (subs input
+                              cursor
+                              new-cursor)
+                :old-cursor cursor
+                :new-cursor new-cursor})
+             {:operator ::any
+              :parsed? false
+              :old-cursor cursor}))})
 
 (defn new-registry []
   (atom default-components))
@@ -338,6 +366,7 @@
      (def ~registry-sym (new-registry))
      (def ~'get-parser (partial parser ~registry-sym))
      ~@(for [[new-s old-s] [['>? 'lookahead]
+                            ['>! 'negative-lookahead]
                             ['* 'star]
                             ['s 'chain]
                             ['| 'choice]
